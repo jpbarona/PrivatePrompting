@@ -13,6 +13,7 @@ def main():
     shm_in_name = sys.argv[4]
     shm_out_name = sys.argv[5]
     max_nbytes = int(sys.argv[6])
+    k = int(sys.argv[7]) if len(sys.argv) > 7 else 0
 
     original_stdout = sys.stdout
     sys.stdout = sys.stderr
@@ -26,6 +27,9 @@ def main():
     layers_list = getattr(base, "layers", None)
     rotary_emb = getattr(base, "rotary_emb", None)
     assert layers_list is not None and rotary_emb is not None
+
+    num_blocks = len(layers_list)
+    layers_to_run = layers_list[k : num_blocks - k]
 
     shm_in = SharedMemory(name=shm_in_name, create=False)
     shm_out = SharedMemory(name=shm_out_name, create=False)
@@ -49,7 +53,7 @@ def main():
                 torch.full((seq_len, seq_len), torch.finfo(hidden_states.dtype).min, device=device, dtype=hidden_states.dtype),
                 diagonal=1,
             ).unsqueeze(0).unsqueeze(0)
-            for layer in layers_list:
+            for layer in layers_to_run:
                 hidden_states = layer(
                     hidden_states,
                     attention_mask=causal_mask,
