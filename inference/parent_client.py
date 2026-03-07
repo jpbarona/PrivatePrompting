@@ -122,9 +122,9 @@ def run_chain_inference(
             t.numpy().tobytes(),
         )
         frame, out_bytes = recv_frame(sock_from_w2, max_nbytes)
-        kind = frame.get("kind")
+        kind = frame["kind"]
         if kind == KIND_ERROR:
-            raise RuntimeError(f"Worker error: {frame.get('message')}")
+            raise RuntimeError(f"Worker error: {frame['message']}")
         if kind != KIND_TENSOR:
             raise RuntimeError(f"Unexpected response frame: {frame}")
         out_shape = tuple(frame["shape"])
@@ -220,6 +220,7 @@ def main():
         print("baseline decoded:", tokenizer.decode(baseline, skip_special_tokens=True))
         print("split decoded:   ", tokenizer.decode(split, skip_special_tokens=True))
     finally:
+        to_raise = None
         if sock_to_w1 is not None:
             try:
                 send_frame(sock_to_w1, {"kind": KIND_SHUTDOWN})
@@ -228,15 +229,17 @@ def main():
         if sock_from_w2 is not None:
             try:
                 frame, _ = recv_frame(sock_from_w2, max_nbytes)
-                if frame.get("kind") != KIND_SHUTDOWN:
-                    raise RuntimeError(f"Unexpected final frame: {frame}")
-            except Exception:
-                pass
+                if frame["kind"] != KIND_SHUTDOWN:
+                    to_raise = RuntimeError(f"Unexpected final frame: {frame}")
+            except Exception as e:
+                to_raise = e
         if sock_to_w1 is not None:
             sock_to_w1.close()
         if sock_from_w2 is not None:
             sock_from_w2.close()
         listen_sock.close()
+        if to_raise is not None:
+            raise to_raise
 
 
 if __name__ == "__main__":

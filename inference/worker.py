@@ -96,7 +96,7 @@ def main():
         with torch.no_grad():
             while True:
                 frame, tensor_bytes = recv_frame(upstream_sock, args.max_nbytes)
-                kind = frame.get("kind")
+                kind = frame["kind"]
                 if kind == KIND_SHUTDOWN:
                     send_frame(next_sock, {"kind": KIND_SHUTDOWN})
                     break

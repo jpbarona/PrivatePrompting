@@ -63,6 +63,16 @@ def recv_frame(sock, max_nbytes):
         raise ValueError("Frame checksum mismatch")
 
     frame = pickle.loads(payload)
+    if not isinstance(frame, dict):
+        raise ValueError(f"Frame must be a dict, got {type(frame).__name__}")
+    if "kind" not in frame:
+        raise ValueError("Frame missing 'kind'")
+    kind = frame["kind"]
+    if kind == KIND_TENSOR and "shape" not in frame:
+        raise ValueError("tensor frame missing 'shape'")
+    if kind == KIND_ERROR and "message" not in frame:
+        raise ValueError("error frame missing 'message'")
+
     tensor_bytes = recv_exact(sock, tensor_len) if tensor_len else None
     return frame, tensor_bytes
 
@@ -75,12 +85,12 @@ def send_hello_expect_ready(sock, role, max_nbytes, layer_start=None, layer_end=
         frame["layer_end"] = layer_end
     send_frame(sock, frame)
     ready, _ = recv_frame(sock, max_nbytes)
-    if ready.get("kind") != KIND_READY:
+    if ready["kind"] != KIND_READY:
         raise RuntimeError(f"Expected READY, got {ready}")
 
 
 def expect_hello_send_ready(sock, role, max_nbytes):
     frame, _ = recv_frame(sock, max_nbytes)
-    if frame.get("kind") != KIND_HELLO:
+    if frame["kind"] != KIND_HELLO:
         raise RuntimeError(f"Expected HELLO, got {frame}")
     send_frame(sock, {"kind": KIND_READY, "role": role})
