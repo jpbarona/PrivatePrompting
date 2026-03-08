@@ -1,4 +1,5 @@
-SYSTEM_PYTHON ?= python3.11
+SYSTEM_PYTHON ?= python3
+SETUP_PYTHON := $(if $(filter /%,$(SYSTEM_PYTHON)),$(SYSTEM_PYTHON),$(shell sh "$(CURDIR)/scripts/choose-setup-python.sh" $(SYSTEM_PYTHON)))
 PYTHON ?= $(if $(wildcard .venv/bin/python),.venv/bin/python,$(SYSTEM_PYTHON))
 PIP ?= $(PYTHON) -m pip
 PYTHONPATH ?= .
@@ -38,7 +39,8 @@ HANDLER_NAME ?= inference_frame
 
 help:
 	@echo "Environment:"
-	@echo "  make setup        # create .venv with Python 3.11 and install pip deps"
+	@echo "  make setup        # create .venv and install pip deps"
+	@echo "  (Use system/Homebrew Python; uv-managed python3 can break venv. Override: SYSTEM_PYTHON=/path/to/python)"
 	@echo ""
 	@echo "Run peers on host machine:"
 	@echo "  0) make bootstrap_peer [HOST_IP=<lan_ip>]   # start DHT bootstrap (do this first)"
@@ -62,9 +64,11 @@ help:
 	@echo "  - Effective keys: DHT_KEY_W1=$(DHT_KEY_W1), DHT_KEY_W2=$(DHT_KEY_W2)"
 
 setup:
-	@command -v $(SYSTEM_PYTHON) >/dev/null 2>&1 || { echo "Missing $(SYSTEM_PYTHON). Install Python 3.11 and retry."; exit 2; }
-	$(SYSTEM_PYTHON) -m venv .venv
-	$(PIP) install --upgrade pip
+	@command -v $(SETUP_PYTHON) >/dev/null 2>&1 || { echo "Missing $(SETUP_PYTHON). Install Python 3 or set SYSTEM_PYTHON=/path/to/python."; exit 2; }
+	$(SETUP_PYTHON) -m venv .venv --without-pip
+	$(SETUP_PYTHON) -c "import urllib.request; urllib.request.urlretrieve('https://bootstrap.pypa.io/get-pip.py', 'get-pip.py')"
+	.venv/bin/python get-pip.py
+	@rm -f get-pip.py
 	$(PIP) install -r requirements.txt
 
 quickstart:

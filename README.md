@@ -55,7 +55,7 @@ Use one of these:
 
 ## Useful commands
 
-- `make setup` - create `.venv` (Python 3.11), install dependencies, and set local runtime baseline.
+- `make setup` - create `.venv`, install dependencies, and set local runtime baseline.
 - `make help` - print all command usage.
 - `make w2 ...` / `make w1 ...` / `make run ...` - base targets.
 - `make host_w2 ...` / `make host_w1 ...` / `make remote_run ...` - convenience aliases.
