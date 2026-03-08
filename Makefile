@@ -49,8 +49,14 @@ quickstart:
 	@echo "Remote terminal:"
 	@echo "  make remote_run HOST_IP=<client_ip> BOOTSTRAP_MADDR=<peer0_dht_maddr>"
 
+host_w2: w2
+
+host_w1: w1
+
+remote_run: run
+
 w2:
-	$(PYTHON) worker.py \
+	$(PYTHON) inference/worker.py \
 		--role w2 \
 		--model-name "$(MODEL_NAME)" \
 		--host-ip $(HOST_IP) \
@@ -64,7 +70,7 @@ w2:
 		--layer-end $(W2_LAYER_END)
 
 w1:
-	$(PYTHON) worker.py \
+	$(PYTHON) inference/worker.py \
 		--role w1 \
 		--model-name "$(MODEL_NAME)" \
 		--host-ip $(HOST_IP) \
@@ -79,7 +85,7 @@ w1:
 		--layer-end $(W1_LAYER_END)
 
 run:
-	$(PYTHON) parent_client.py \
+	$(PYTHON) inference/parent_client.py \
 		--model-name "$(MODEL_NAME)" \
 		--prompt "$(PROMPT)" \
 		--num-new-tokens $(NUM_NEW_TOKENS) \

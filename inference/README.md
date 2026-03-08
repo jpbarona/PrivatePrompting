@@ -13,7 +13,7 @@ Distributed causal LM inference over two middle workers using raw Hivemind P2P t
 ## Prerequisites
 
 - Active Python environment with `torch` and `transformers` installed (e.g. `conda activate quantenv`)
-- Run all commands from `inference/`
+- Run all `make` commands from repo root (`Hackathon/`)
 - A bootstrap DHT multiaddr is required (for MVP this is peer0's DHT maddr from `singleMachinep2p/peer0.py`)
 
 ## Run E2E (host peers + remote client)
@@ -40,7 +40,7 @@ export HOST_IP=192.168.1.31
 export BOOTSTRAP_MADDR="/ip4/192.168.1.31/tcp/43300/p2p/<peer0_dht_peer_id>"
 ```
 
-Then start workers from `inference/`:
+Then start workers:
 
 ```bash
 make w2
