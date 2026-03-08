@@ -30,7 +30,7 @@ DHT_KEY_W1 ?= $(DHT_KEY_BASE_W1)$(if $(RUN_ID),_$(RUN_ID),)
 DHT_KEY_W2 ?= $(DHT_KEY_BASE_W2)$(if $(RUN_ID),_$(RUN_ID),)
 HANDLER_NAME ?= inference_frame
 
-.PHONY: help quickstart host_w2 host_w1 remote_run w1 w2 run test-e2e bootstrap_peer
+.PHONY: help quickstart host_w2 host_w1 remote_run w1 w2 run test test-e2e test-integration bootstrap_peer
 
 help:
 	@echo "Run peers on host machine:"
@@ -44,7 +44,9 @@ help:
 	@echo "  make host_w2      # same as w2"
 	@echo "  make host_w1      # same as w1"
 	@echo "  make remote_run   # same as run"
+	@echo "  make test         # runs integration then e2e"
 	@echo "  make test-e2e     # one-command orchestrated E2E"
+	@echo "  make test-integration # frontend/backend integration contracts"
 	@echo "  make quickstart   # prints copy/paste flow"
 	@echo ""
 	@echo "Safety notes:"
@@ -135,3 +137,8 @@ test-e2e:
 		--p2p-port-w1 $(P2P_PORT_W1_E2E) \
 		--p2p-port-w2 $(P2P_PORT_W2) \
 		--run-id "$(RUN_ID)"
+
+test-integration:
+	npm --prefix frontend test
+
+test: test-integration test-e2e
