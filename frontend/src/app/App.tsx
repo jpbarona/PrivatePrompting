@@ -4,27 +4,82 @@ import { motion, AnimatePresence } from "motion/react";
 import { CircularProgress } from "./components/CircularProgress";
 import { Chat } from "./components/Chat";
 
+type BackendStatus = "idle" | "starting" | "ready" | "error";
+
+type BackendStatusResponse = {
+  status: BackendStatus;
+  apiUrl: string | null;
+  error: string | null;
+  logs: string[];
+};
+
 export default function App() {
   const [activeTab, setActiveTab] = useState("connect");
-  const [showConnectProgress, setShowConnectProgress] = useState(false);
   const [showHostProgress, setShowHostProgress] = useState(false);
   const [isConnected, setIsConnected] = useState(false);
   const [isHosting, setIsHosting] = useState(false);
   const [peerNumber, setPeerNumber] = useState<number | null>(null);
+  const [bootstrapMaddr, setBootstrapMaddr] = useState("");
+  const [runId, setRunId] = useState("");
+  const [connectStatus, setConnectStatus] = useState<BackendStatus>("idle");
+  const [connectError, setConnectError] = useState("");
+  const [connectLogs, setConnectLogs] = useState<string[]>([]);
+  const [inferUrl, setInferUrl] = useState("http://localhost:8000/infer");
 
-  const handleConnectClick = () => {
-    setShowConnectProgress(true);
+  const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  const pollUntilReady = async () => {
+    for (let i = 0; i < 180; i++) {
+      const statusRes = await fetch("/__backend/status");
+      if (!statusRes.ok) {
+        throw new Error(`Status check failed with ${statusRes.status}`);
+      }
+      const status = (await statusRes.json()) as BackendStatusResponse;
+      setConnectStatus(status.status);
+      setConnectLogs(status.logs ?? []);
+      if (status.status === "ready" && status.apiUrl) {
+        setInferUrl(`${status.apiUrl}/infer`);
+        setIsConnected(true);
+        return;
+      }
+      if (status.status === "error") {
+        throw new Error(status.error ?? "Backend failed to start");
+      }
+      await sleep(1000);
+    }
+    throw new Error("Timed out waiting for backend startup");
+  };
+
+  const handleConnectClick = async () => {
+    setConnectError("");
+    setConnectLogs([]);
+    if (!bootstrapMaddr.trim()) {
+      setConnectError("bootstrap_maddr is required");
+      return;
+    }
+    setConnectStatus("starting");
+    try {
+      const res = await fetch("/__backend/start", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          bootstrapMaddr: bootstrapMaddr.trim(),
+          runId: runId.trim(),
+        }),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(err.error ?? res.statusText);
+      }
+      await pollUntilReady();
+    } catch (error) {
+      setConnectStatus("error");
+      setConnectError(error instanceof Error ? error.message : String(error));
+    }
   };
 
   const handleHostClick = () => {
     setShowHostProgress(true);
-  };
-
-  const handleConnectComplete = () => {
-    setTimeout(() => {
-      setShowConnectProgress(false);
-      setIsConnected(true);
-    }, 1000);
   };
 
   const handleHostComplete = () => {
@@ -109,48 +164,52 @@ export default function App() {
           {/* Connect Tab Content */}
           <Tabs.Content value="connect" className="flex-1 min-h-0 flex flex-col">
             {isConnected ? (
-              <Chat />
+              <Chat inferUrl={inferUrl} />
             ) : (
-              <div className="flex-1 flex items-center justify-center">
-                <AnimatePresence mode="wait">
-                {!showConnectProgress ? (
-                  <motion.button
-                    key="connect-button"
-                    onClick={handleConnectClick}
-                    className="group relative w-48 h-48 bg-white/5 backdrop-blur-xl rounded-full border border-white/10 hover:border-white/30 flex items-center justify-center transition-all duration-300"
-                    initial={{ opacity: 0, scale: 0.9 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.9 }}
-                    whileHover={{ scale: 1.05 }}
-                    whileTap={{ scale: 0.95 }}
-                    transition={{ duration: 0.3 }}
-                  >
-                    {/* Subtle gradient overlay on hover */}
-                    <motion.div
-                      className="absolute inset-0 rounded-full bg-gradient-to-r from-blue-500/20 via-purple-500/20 to-pink-500/20 opacity-0 group-hover:opacity-100"
-                      transition={{ duration: 0.3 }}
+              <div className="flex-1 flex items-center justify-center px-6">
+                <div className="w-full max-w-2xl bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 p-6 space-y-4">
+                  <h2 className="text-xl font-light tracking-wide">Launch Backend</h2>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <input
+                      value={bootstrapMaddr}
+                      onChange={(e) => setBootstrapMaddr(e.target.value)}
+                      placeholder="bootstrap_maddr (required)"
+                      className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none md:col-span-2"
                     />
-                    
-                    {/* Subtle glow effect */}
-                    <div className="absolute inset-0 blur-2xl bg-gradient-to-r from-blue-500/20 via-purple-500/20 to-pink-500/20 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-                    
-                    <span className="relative text-xl font-light tracking-wide">
-                      Connect
-                    </span>
-                  </motion.button>
-                ) : (
-                  <motion.div
-                    key="connect-progress"
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    exit={{ opacity: 0, scale: 0.8 }}
-                    transition={{ duration: 0.3 }}
+                    <input
+                      value={runId}
+                      onChange={(e) => setRunId(e.target.value)}
+                      placeholder="run_id (optional)"
+                      className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none"
+                    />
+                  </div>
+                  <motion.button
+                    onClick={() => void handleConnectClick()}
+                    disabled={connectStatus === "starting"}
+                    className="w-full bg-gradient-to-r from-blue-500 to-purple-500 rounded-xl px-4 py-3 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                    whileHover={{ scale: 1.01 }}
+                    whileTap={{ scale: 0.99 }}
                   >
-                    <CircularProgress onComplete={handleConnectComplete} />
-                  </motion.div>
-                )}
-              </AnimatePresence>
-            </div>
+                    {connectStatus === "starting" ? "Starting backend..." : "Connect"}
+                  </motion.button>
+                  {connectStatus === "starting" && (
+                    <div className="text-sm text-white/70">Waiting for api.py to become ready.</div>
+                  )}
+                  {connectStatus === "ready" && (
+                    <div className="text-sm text-emerald-300">Connected to {inferUrl}</div>
+                  )}
+                  {connectError && <div className="text-sm text-red-300">{connectError}</div>}
+                  {connectLogs.length > 0 && (
+                    <div className="max-h-36 overflow-y-auto text-xs bg-black/40 border border-white/10 rounded-xl p-3 space-y-1">
+                      {connectLogs.map((line, idx) => (
+                        <div key={`${idx}-${line.slice(0, 24)}`} className="text-white/70">
+                          {line}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
             )}
           </Tabs.Content>
 

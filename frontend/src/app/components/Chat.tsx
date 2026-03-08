@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Send } from "lucide-react";
 
-const INFER_URL = "http://localhost:8000/infer";
+const DEFAULT_INFER_URL = "http://localhost:8000/infer";
 
 interface Message {
   id: string;
@@ -11,7 +11,11 @@ interface Message {
   timestamp: Date;
 }
 
-export function Chat() {
+interface ChatProps {
+  inferUrl?: string;
+}
+
+export function Chat({ inferUrl = DEFAULT_INFER_URL }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -50,7 +54,7 @@ export function Chat() {
     scrollToBottom(true); // always scroll when user sends
 
     try {
-      const res = await fetch(INFER_URL, {
+      const res = await fetch(inferUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ prompt: sentPrompt }),
