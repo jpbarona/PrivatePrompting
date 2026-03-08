@@ -12,7 +12,7 @@ Distributed causal LM inference over two middle workers using raw Hivemind P2P t
 
 ## Prerequisites
 
-- Active Python environment with `torch` and `transformers` installed (e.g. `conda activate quantenv`)
+- From repo root, run `make setup` to create `.venv` (Python 3.11) and install pip dependencies
 - Run all `make` commands from repo root (`Hackathon/`)
 - A bootstrap DHT multiaddr is required (for MVP this is the bootstrap peer's DHT maddr from `p2p/bootstrap_peer.py`)
 

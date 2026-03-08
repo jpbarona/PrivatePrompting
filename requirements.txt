@@ -1,0 +1,9 @@
+fastapi
+hivemind
+multiaddr
+numpy
+pydantic
+pytest
+torch
+transformers
+uvicorn

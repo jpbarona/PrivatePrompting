@@ -1,4 +1,8 @@
-PYTHON ?= python
+SYSTEM_PYTHON ?= python3.11
+PYTHON ?= $(if $(wildcard .venv/bin/python),.venv/bin/python,$(SYSTEM_PYTHON))
+PIP ?= $(PYTHON) -m pip
+PYTHONPATH ?= .
+export PYTHONPATH
 
 MODEL_NAME ?= Qwen/Qwen2.5-0.5B-Instruct
 PROMPT ?= Hey! How are you feeling today?
@@ -30,9 +34,12 @@ DHT_KEY_W1 ?= $(DHT_KEY_BASE_W1)$(if $(RUN_ID),_$(RUN_ID),)
 DHT_KEY_W2 ?= $(DHT_KEY_BASE_W2)$(if $(RUN_ID),_$(RUN_ID),)
 HANDLER_NAME ?= inference_frame
 
-.PHONY: help quickstart host_w2 host_w1 remote_run w1 w2 run test test-e2e test-integration bootstrap_peer
+.PHONY: help setup quickstart host_w2 host_w1 remote_run w1 w2 run test test-e2e test-integration bootstrap_peer
 
 help:
+	@echo "Environment:"
+	@echo "  make setup        # create .venv with Python 3.11 and install pip deps"
+	@echo ""
 	@echo "Run peers on host machine:"
 	@echo "  0) make bootstrap_peer [HOST_IP=<lan_ip>]   # start DHT bootstrap (do this first)"
 	@echo "  1) make w2 BOOTSTRAP_MADDR=<bootstrap_peer_dht_maddr> HOST_IP=<host_ip> [RUN_ID=<id>]"
@@ -53,6 +60,12 @@ help:
 	@echo "  - If bootstrap_peer is running, avoid P2P_PORT_W1=44211 (conflicts with bootstrap peer P2P)."
 	@echo "  - Set RUN_ID to isolate DHT keys per run (e.g. RUN_ID=v3)."
 	@echo "  - Effective keys: DHT_KEY_W1=$(DHT_KEY_W1), DHT_KEY_W2=$(DHT_KEY_W2)"
+
+setup:
+	@command -v $(SYSTEM_PYTHON) >/dev/null 2>&1 || { echo "Missing $(SYSTEM_PYTHON). Install Python 3.11 and retry."; exit 2; }
+	$(SYSTEM_PYTHON) -m venv .venv
+	$(PIP) install --upgrade pip
+	$(PIP) install -r requirements.txt
 
 quickstart:
 	@echo "Set once (same value in all terminals): RUN_ID=<id> (example: RUN_ID=v3)"
