@@ -21,6 +21,7 @@ DHT_PORT_W2 ?= 43312
 DHT_PORT_PARENT ?= 43313
 P2P_PORT_W1 ?= 44211
 P2P_PORT_W2 ?= 44212
+P2P_PORT_W1_E2E ?= 44221
 
 RUN_ID ?=
 DHT_KEY_BASE_W1 ?= inference_w1
@@ -29,7 +30,7 @@ DHT_KEY_W1 ?= $(DHT_KEY_BASE_W1)$(if $(RUN_ID),_$(RUN_ID),)
 DHT_KEY_W2 ?= $(DHT_KEY_BASE_W2)$(if $(RUN_ID),_$(RUN_ID),)
 HANDLER_NAME ?= inference_frame
 
-.PHONY: help quickstart host_w2 host_w1 remote_run w1 w2 run
+.PHONY: help quickstart host_w2 host_w1 remote_run w1 w2 run e2e
 
 help:
 	@echo "Run peers on host machine:"
@@ -42,6 +43,7 @@ help:
 	@echo "  make host_w2      # same as w2"
 	@echo "  make host_w1      # same as w1"
 	@echo "  make remote_run   # same as run"
+	@echo "  make e2e          # one-command orchestrated E2E"
 	@echo "  make quickstart   # prints copy/paste flow"
 	@echo ""
 	@echo "Safety notes:"
@@ -106,3 +108,26 @@ run:
 		--w1-dht-key "$(DHT_KEY_W1)" \
 		--w2-dht-key "$(DHT_KEY_W2)" \
 		--max-seq $(MAX_SEQ)
+
+e2e:
+	@if [ "$(HOST_IP)" = "127.0.0.1" ]; then echo "HOST_IP must be your LAN IP (e.g. 192.168.x.x), not 127.0.0.1"; exit 2; fi
+	$(PYTHON) tests/e2e/run_e2e.py \
+		--python "$(PYTHON)" \
+		--host-ip "$(HOST_IP)" \
+		--model-name "$(MODEL_NAME)" \
+		--prompt "$(PROMPT)" \
+		--num-new-tokens $(NUM_NEW_TOKENS) \
+		--k $(K) \
+		--num-middle-partitions $(NUM_MIDDLE_PARTITIONS) \
+		--max-nbytes $(MAX_NBYTES) \
+		--max-seq $(MAX_SEQ) \
+		--w1-layer-start $(W1_LAYER_START) \
+		--w1-layer-end $(W1_LAYER_END) \
+		--w2-layer-start $(W2_LAYER_START) \
+		--w2-layer-end $(W2_LAYER_END) \
+		--dht-port-w1 $(DHT_PORT_W1) \
+		--dht-port-w2 $(DHT_PORT_W2) \
+		--dht-port-parent $(DHT_PORT_PARENT) \
+		--p2p-port-w1 $(P2P_PORT_W1_E2E) \
+		--p2p-port-w2 $(P2P_PORT_W2) \
+		--run-id "$(RUN_ID)"
