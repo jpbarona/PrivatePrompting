@@ -5,6 +5,8 @@ import zlib
 
 MAGIC = b"P5CH"
 VERSION = 1
+HEADER_STRUCT = struct.Struct(">4sBIII")
+HEADER_SIZE = HEADER_STRUCT.size
 KIND_HELLO = "hello"
 KIND_READY = "ready"
 KIND_TENSOR = "tensor"
@@ -17,38 +19,27 @@ def configure_sock(sock, timeout_s=120.0):
     sock.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
 
 
-def send_frame(sock, frame, tensor_bytes=None):
+def encode_frame(frame, tensor_bytes=None):
     payload = pickle.dumps(frame, protocol=pickle.HIGHEST_PROTOCOL)
     tensor_bytes = tensor_bytes or b""
     checksum = zlib.crc32(payload) & 0xFFFFFFFF
-    header = struct.pack(
-        ">4sBIII",
+    header = HEADER_STRUCT.pack(
         MAGIC,
         VERSION,
         len(payload),
         len(tensor_bytes),
         checksum,
     )
-    sock.sendall(header)
-    sock.sendall(payload)
-    if tensor_bytes:
-        sock.sendall(tensor_bytes)
+    return header + payload + tensor_bytes
 
 
-def recv_exact(sock, n):
-    buf = []
-    while n > 0:
-        chunk = sock.recv(n)
-        if not chunk:
-            raise ConnectionError("socket closed")
-        buf.append(chunk)
-        n -= len(chunk)
-    return b"".join(buf)
+def _validate_frame_blob(blob, max_nbytes):
+    if len(blob) < HEADER_SIZE:
+        raise ValueError(f"frame too short: {len(blob)} < {HEADER_SIZE}")
 
-
-def recv_frame(sock, max_nbytes):
-    header = recv_exact(sock, 17)
-    magic, version, payload_len, tensor_len, checksum = struct.unpack(">4sBIII", header)
+    magic, version, payload_len, tensor_len, checksum = HEADER_STRUCT.unpack(
+        blob[:HEADER_SIZE]
+    )
     if magic != MAGIC:
         raise ValueError(f"Bad frame magic: {magic!r}")
     if version != VERSION:
@@ -58,7 +49,13 @@ def recv_frame(sock, max_nbytes):
     if tensor_len > max_nbytes:
         raise ValueError(f"tensor_len={tensor_len} > max_nbytes={max_nbytes}")
 
-    payload = recv_exact(sock, payload_len)
+    total_len = HEADER_SIZE + payload_len + tensor_len
+    if len(blob) != total_len:
+        raise ValueError(f"frame length mismatch: got {len(blob)}, expected {total_len}")
+
+    payload_start = HEADER_SIZE
+    payload_end = payload_start + payload_len
+    payload = blob[payload_start:payload_end]
     if (zlib.crc32(payload) & 0xFFFFFFFF) != checksum:
         raise ValueError("Frame checksum mismatch")
 
@@ -73,8 +70,35 @@ def recv_frame(sock, max_nbytes):
     if kind == KIND_ERROR and "message" not in frame:
         raise ValueError("error frame missing 'message'")
 
-    tensor_bytes = recv_exact(sock, tensor_len) if tensor_len else None
+    tensor_bytes = blob[payload_end:] if tensor_len else None
     return frame, tensor_bytes
+
+
+def decode_frame(blob, max_nbytes):
+    return _validate_frame_blob(blob, max_nbytes)
+
+
+def send_frame(sock, frame, tensor_bytes=None):
+    sock.sendall(encode_frame(frame, tensor_bytes))
+
+
+def recv_exact(sock, n):
+    buf = []
+    while n > 0:
+        chunk = sock.recv(n)
+        if not chunk:
+            raise ConnectionError("socket closed")
+        buf.append(chunk)
+        n -= len(chunk)
+    return b"".join(buf)
+
+
+def recv_frame(sock, max_nbytes):
+    header = recv_exact(sock, HEADER_SIZE)
+    _, _, payload_len, tensor_len, _ = HEADER_STRUCT.unpack(header)
+    payload = recv_exact(sock, payload_len)
+    tensor_bytes = recv_exact(sock, tensor_len) if tensor_len else b""
+    return decode_frame(header + payload + tensor_bytes, max_nbytes)
 
 
 def send_hello_expect_ready(sock, role, max_nbytes, layer_start=None, layer_end=None):

@@ -1,60 +1,53 @@
 import argparse
-import socket
-import time
+import asyncio
+
+from hivemind.p2p import P2P
 
 from protocol import (
     KIND_ERROR,
+    KIND_HELLO,
+    KIND_READY,
     KIND_SHUTDOWN,
     KIND_TENSOR,
-    configure_sock,
-    expect_hello_send_ready,
-    recv_frame,
-    send_frame,
-    send_hello_expect_ready,
+    decode_frame,
+    encode_frame,
 )
-
-
-def connect_with_retry(host, port, timeout_s=120.0, start_sleep_s=0.05, max_sleep_s=1.0):
-    deadline = time.monotonic() + timeout_s
-    sleep_s = start_sleep_s
-    last_error = None
-    while time.monotonic() < deadline:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        configure_sock(sock, timeout_s=timeout_s)
-        try:
-            sock.connect((host, port))
-            return sock
-        except OSError as exc:
-            last_error = exc
-            sock.close()
-            time.sleep(sleep_s)
-            sleep_s = min(max_sleep_s, sleep_s * 2)
-    raise TimeoutError(f"Timed out connecting to {host}:{port}; last_error={last_error}")
+from p2p_transport import (
+    DEFAULT_DHT_TTL,
+    DEFAULT_HANDLER_NAME,
+    build_worker_info,
+    call_handler,
+    create_p2p_node,
+    discover_worker,
+    join_dht,
+    refresh_worker_registration,
+)
 
 
 def parse_args():
     p = argparse.ArgumentParser()
+    p.add_argument("--role", choices=("w1", "w2"), required=True)
     p.add_argument("--model-name", required=True)
-    p.add_argument("--listen-port", type=int, required=True)
-    p.add_argument("--next-host", required=True)
-    p.add_argument("--next-port", type=int, required=True)
+    p.add_argument("--host-ip", required=True)
+    p.add_argument("--dht-port", type=int, required=True)
+    p.add_argument("--p2p-port", type=int, required=True)
+    p.add_argument("--bootstrap-maddr", default=None)
+    p.add_argument("--dht-key", required=True)
+    p.add_argument("--next-dht-key", default=None)
+    p.add_argument("--handler-name", default=DEFAULT_HANDLER_NAME)
     p.add_argument("--max-nbytes", type=int, required=True)
     p.add_argument("--layer-start", type=int, required=True)
     p.add_argument("--layer-end", type=int, required=True)
+    p.add_argument("--dht-ttl", type=float, default=DEFAULT_DHT_TTL)
     return p.parse_args()
 
 
-def main():
+async def main():
     args = parse_args()
-
     if args.layer_end <= args.layer_start:
         raise ValueError(f"Invalid layer range: [{args.layer_start}, {args.layer_end})")
-
-    listen_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    listen_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    listen_sock.bind(("", args.listen_port))
-    listen_sock.listen(1)
-    configure_sock(listen_sock, timeout_s=120.0)
+    if args.role == "w1" and not args.next_dht_key:
+        raise ValueError("--next-dht-key is required for role=w1")
 
     import torch
     from transformers import AutoModelForCausalLM
@@ -77,94 +70,173 @@ def main():
         )
     layers_to_run = layers_list[args.layer_start : args.layer_end]
 
-    next_sock = connect_with_retry(args.next_host, args.next_port, timeout_s=120.0)
-    upstream_sock, _ = listen_sock.accept()
-    listen_sock.close()
-    configure_sock(upstream_sock, timeout_s=120.0)
-    configure_sock(next_sock, timeout_s=120.0)
-
-    send_hello_expect_ready(
-        next_sock,
-        role="middle-worker",
+    dht, dht_maddr = join_dht(
+        dht_port=args.dht_port,
+        bootstrap_maddr=args.bootstrap_maddr,
+        host_ip=args.host_ip,
+    )
+    p2p = await create_p2p_node(p2p_port=args.p2p_port)
+    info = build_worker_info(
+        role=args.role,
+        host_ip=args.host_ip,
+        p2p_port=args.p2p_port,
+        p2p=p2p,
         layer_start=args.layer_start,
         layer_end=args.layer_end,
-        max_nbytes=args.max_nbytes,
+        handler_name=args.handler_name,
     )
-    expect_hello_send_ready(upstream_sock, role="middle-worker", max_nbytes=args.max_nbytes)
+    refresh_worker_registration(dht, key=args.dht_key, info=info, ttl_s=args.dht_ttl)
 
-    try:
-        with torch.no_grad():
-            while True:
-                frame, tensor_bytes = recv_frame(upstream_sock, args.max_nbytes)
-                kind = frame["kind"]
-                if kind == KIND_SHUTDOWN:
-                    send_frame(next_sock, {"kind": KIND_SHUTDOWN})
-                    break
-                if kind == KIND_ERROR:
-                    send_frame(next_sock, frame)
-                    break
-                if kind != KIND_TENSOR:
-                    raise RuntimeError(f"Unexpected frame kind from upstream: {frame}")
-
-                shape = tuple(frame["shape"])
-                hidden_states = (
-                    torch.frombuffer(tensor_bytes, dtype=torch.float32)
-                    .reshape(shape)
-                    .clone()
-                    .to(device)
-                )
-
-                seq_len = hidden_states.shape[1]
-                position_ids = torch.arange(
-                    seq_len, device=device, dtype=torch.long
-                ).unsqueeze(0)
-                position_embeddings = rotary_emb(hidden_states, position_ids)
-                causal_mask = torch.triu(
-                    torch.full(
-                        (seq_len, seq_len),
-                        torch.finfo(hidden_states.dtype).min,
-                        device=device,
-                        dtype=hidden_states.dtype,
-                    ),
-                    diagonal=1,
-                ).unsqueeze(0).unsqueeze(0)
-
-                for layer in layers_to_run:
-                    hidden_states = layer(
-                        hidden_states,
-                        attention_mask=causal_mask,
-                        position_embeddings=position_embeddings,
-                        position_ids=position_ids,
-                        use_cache=False,
-                    )
-
-                out_nbytes = hidden_states.numel() * hidden_states.element_size()
-                if out_nbytes > args.max_nbytes:
-                    raise ValueError(
-                        f"Output out_nbytes={out_nbytes} larger than max_nbytes={args.max_nbytes}"
-                    )
-                send_frame(
-                    next_sock,
-                    {
-                        "kind": KIND_TENSOR,
-                        "shape": tuple(hidden_states.shape),
-                        "nbytes": out_nbytes,
-                    },
-                    hidden_states.cpu().numpy().tobytes(),
-                )
-    except Exception as exc:
-        try:
-            send_frame(
-                next_sock,
-                {"kind": KIND_ERROR, "message": f"{type(exc).__name__}: {exc}"},
+    downstream = None
+    downstream_ready = False
+    if args.next_dht_key:
+        downstream = discover_worker(dht, key=args.next_dht_key)
+        if downstream.layer_start != args.layer_end:
+            raise RuntimeError(
+                f"Layer continuity mismatch: current end={args.layer_end}, next start={downstream.layer_start}"
             )
-        except Exception:
-            pass
-        raise
+
+    stop_event = asyncio.Event()
+
+    async def run_local_layers(frame, tensor_bytes):
+        shape = tuple(frame["shape"])
+        hidden_states = (
+            torch.frombuffer(tensor_bytes, dtype=torch.float32).reshape(shape).clone().to(device)
+        )
+        seq_len = hidden_states.shape[1]
+        position_ids = torch.arange(seq_len, device=device, dtype=torch.long).unsqueeze(0)
+        position_embeddings = rotary_emb(hidden_states, position_ids)
+        causal_mask = torch.triu(
+            torch.full(
+                (seq_len, seq_len),
+                torch.finfo(hidden_states.dtype).min,
+                device=device,
+                dtype=hidden_states.dtype,
+            ),
+            diagonal=1,
+        ).unsqueeze(0).unsqueeze(0)
+
+        for layer in layers_to_run:
+            hidden_states = layer(
+                hidden_states,
+                attention_mask=causal_mask,
+                position_embeddings=position_embeddings,
+                position_ids=position_ids,
+                use_cache=False,
+            )
+
+        out_nbytes = hidden_states.numel() * hidden_states.element_size()
+        if out_nbytes > args.max_nbytes:
+            raise ValueError(
+                f"Output out_nbytes={out_nbytes} larger than max_nbytes={args.max_nbytes}"
+            )
+        return {
+            "kind": KIND_TENSOR,
+            "shape": tuple(hidden_states.shape),
+            "nbytes": out_nbytes,
+        }, hidden_states.cpu().numpy().tobytes()
+
+    async def handle(stream_info, reader, writer):
+        nonlocal downstream_ready
+        try:
+            inbound = await P2P.receive_raw_data(reader)
+            frame, tensor_bytes = decode_frame(inbound, args.max_nbytes)
+            kind = frame["kind"]
+
+            if kind == KIND_HELLO:
+                if downstream and not downstream_ready:
+                    hello_blob = encode_frame(
+                        {
+                            "kind": KIND_HELLO,
+                            "role": args.role,
+                            "layer_start": args.layer_start,
+                            "layer_end": args.layer_end,
+                        }
+                    )
+                    downstream_reply = await call_handler(
+                        p2p=p2p,
+                        peer_id=downstream.peer_id,
+                        handler_name=downstream.handler_name,
+                        payload_bytes=hello_blob,
+                    )
+                    downstream_frame, _ = decode_frame(downstream_reply, args.max_nbytes)
+                    if downstream_frame["kind"] != KIND_READY:
+                        raise RuntimeError(f"Expected READY from downstream, got {downstream_frame}")
+                    downstream_ready = True
+                response_blob = encode_frame({"kind": KIND_READY, "role": args.role})
+                await P2P.send_raw_data(response_blob, writer)
+                return
+
+            if kind == KIND_SHUTDOWN:
+                if downstream:
+                    await call_handler(
+                        p2p=p2p,
+                        peer_id=downstream.peer_id,
+                        handler_name=downstream.handler_name,
+                        payload_bytes=encode_frame({"kind": KIND_SHUTDOWN}),
+                    )
+                await P2P.send_raw_data(encode_frame({"kind": KIND_SHUTDOWN}), writer)
+                stop_event.set()
+                return
+
+            if kind == KIND_ERROR:
+                if downstream:
+                    await call_handler(
+                        p2p=p2p,
+                        peer_id=downstream.peer_id,
+                        handler_name=downstream.handler_name,
+                        payload_bytes=encode_frame(frame),
+                    )
+                await P2P.send_raw_data(encode_frame(frame), writer)
+                stop_event.set()
+                return
+
+            if kind != KIND_TENSOR:
+                raise RuntimeError(f"Unexpected frame kind: {frame}")
+
+            local_frame, local_tensor = await run_local_layers(frame, tensor_bytes)
+            if downstream:
+                downstream_reply = await call_handler(
+                    p2p=p2p,
+                    peer_id=downstream.peer_id,
+                    handler_name=downstream.handler_name,
+                    payload_bytes=encode_frame(local_frame, local_tensor),
+                )
+                await P2P.send_raw_data(downstream_reply, writer)
+                return
+
+            await P2P.send_raw_data(encode_frame(local_frame, local_tensor), writer)
+        except Exception as exc:
+            error_blob = encode_frame({"kind": KIND_ERROR, "message": f"{type(exc).__name__}: {exc}"})
+            try:
+                await P2P.send_raw_data(error_blob, writer)
+            finally:
+                stop_event.set()
+                raise
+        finally:
+            writer.close()
+
+    await p2p.add_binary_stream_handler(args.handler_name, handle)
+    print(
+        f"[{args.role}] DHT={dht_maddr} P2P={info.maddr} key={args.dht_key} "
+        f"layers=[{args.layer_start},{args.layer_end}) handler={args.handler_name}"
+    )
+
+    async def refresh_loop():
+        while not stop_event.is_set():
+            await asyncio.sleep(args.dht_ttl / 2)
+            refresh_worker_registration(dht, key=args.dht_key, info=info, ttl_s=args.dht_ttl)
+
+    refresh_task = asyncio.create_task(refresh_loop())
+    try:
+        await stop_event.wait()
+    except (KeyboardInterrupt, asyncio.CancelledError):
+        pass
     finally:
-        upstream_sock.close()
-        next_sock.close()
+        refresh_task.cancel()
+        await p2p.shutdown()
+        dht.shutdown()
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
