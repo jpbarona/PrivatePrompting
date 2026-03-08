@@ -176,9 +176,14 @@ app.add_middleware(
 )
 
 
+SYSTEM_PROMPT = (
+    "You are a helpful, concise assistant. "
+    "Answer the user's question directly and clearly."
+)
+
+
 class InferRequest(BaseModel):
     prompt: str
-    max_new_tokens: int = 128
 
 
 class InferResponse(BaseModel):
@@ -189,12 +194,20 @@ class InferResponse(BaseModel):
 async def infer(req: InferRequest):
     if not req.prompt.strip():
         raise HTTPException(status_code=422, detail="prompt must not be empty")
+    formatted = state["tokenizer"].apply_chat_template(
+        [
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": req.prompt},
+        ],
+        tokenize=False,
+        add_generation_prompt=True,
+    )
     try:
         token_ids = await run_chain_inference(
             p2p=state["p2p"],
             w1_info=state["w1_info"],
-            prompt=req.prompt,
-            num_tokens=req.max_new_tokens,
+            prompt=formatted,
+            num_tokens=512,  # ceiling — loop breaks early at EOS
             tokenizer=state["tokenizer"],
             embed_module=state["embed_module"],
             first_k_layers=state["first_k"],

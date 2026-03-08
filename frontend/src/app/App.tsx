@@ -88,7 +88,7 @@ export default function App() {
         </div>
 
         {/* Tabs */}
-        <Tabs.Root value={activeTab} onValueChange={setActiveTab} className="flex flex-col flex-1">
+        <Tabs.Root value={activeTab} onValueChange={setActiveTab} className="flex flex-col flex-1 min-h-0">
           <div className="flex justify-center mb-8">
             <Tabs.List className="inline-flex gap-1 p-1 bg-white/5 backdrop-blur-xl rounded-full border border-white/10">
               <Tabs.Trigger
@@ -107,11 +107,12 @@ export default function App() {
           </div>
 
           {/* Connect Tab Content */}
-          <Tabs.Content value="connect" className="flex-1 flex items-center justify-center">
+          <Tabs.Content value="connect" className="flex-1 min-h-0 flex flex-col">
             {isConnected ? (
               <Chat />
             ) : (
-              <AnimatePresence mode="wait">
+              <div className="flex-1 flex items-center justify-center">
+                <AnimatePresence mode="wait">
                 {!showConnectProgress ? (
                   <motion.button
                     key="connect-button"
@@ -149,6 +150,7 @@ export default function App() {
                   </motion.div>
                 )}
               </AnimatePresence>
+            </div>
             )}
           </Tabs.Content>
 

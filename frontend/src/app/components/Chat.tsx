@@ -15,10 +15,19 @@ export function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  const isNearBottom = () => {
+    const el = scrollRef.current;
+    if (!el) return true;
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  };
+
+  const scrollToBottom = (force = false) => {
+    if (force || isNearBottom()) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
   };
 
   useEffect(() => {
@@ -38,6 +47,7 @@ export function Chat() {
     const sentPrompt = inputValue;
     setInputValue("");
     setIsLoading(true);
+    scrollToBottom(true); // always scroll when user sends
 
     try {
       const res = await fetch(INFER_URL, {
@@ -78,7 +88,7 @@ export function Chat() {
   };
 
   return (
-    <div className="flex flex-col h-full max-w-4xl mx-auto px-6 py-8">
+    <div className="flex flex-col h-full w-full max-w-4xl mx-auto px-6 py-8">
       {/* Chat Header */}
       <motion.div
         className="mb-6"
@@ -90,7 +100,10 @@ export function Chat() {
       </motion.div>
 
       {/* Messages Container */}
-      <div className="flex-1 overflow-y-auto mb-6 space-y-4">
+      <div
+        ref={scrollRef}
+        className="flex-1 min-h-0 overflow-y-auto mb-6 space-y-4 pr-2 chat-scroll"
+      >
         <AnimatePresence initial={false}>
           {messages.map((message) => (
             <motion.div

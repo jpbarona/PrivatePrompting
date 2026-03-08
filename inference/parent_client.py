@@ -36,15 +36,19 @@ def run_layers(hidden_states, layers, rotary_emb, device):
     seq_len = hidden_states.shape[1]
     position_ids = torch.arange(seq_len, device=device, dtype=torch.long).unsqueeze(0)
     position_embeddings = rotary_emb(hidden_states, position_ids)
-    causal_mask = torch.triu(
-        torch.full(
-            (seq_len, seq_len),
-            torch.finfo(hidden_states.dtype).min,
-            device=device,
-            dtype=hidden_states.dtype,
-        ),
-        diagonal=1,
-    ).unsqueeze(0).unsqueeze(0)
+    causal_mask = (
+        torch.triu(
+            torch.full(
+                (seq_len, seq_len),
+                torch.finfo(hidden_states.dtype).min,
+                device=device,
+                dtype=hidden_states.dtype,
+            ),
+            diagonal=1,
+        )
+        .unsqueeze(0)
+        .unsqueeze(0)
+    )
     for layer in layers:
         hidden_states = layer(
             hidden_states,
@@ -106,10 +110,16 @@ async def run_chain_inference(
         if kind != KIND_TENSOR:
             raise RuntimeError(f"Unexpected response frame: {frame}")
         out_shape = tuple(frame["shape"])
-        return torch.frombuffer(out_bytes, dtype=torch.float32).reshape(out_shape).clone().to(device)
+        return (
+            torch.frombuffer(out_bytes, dtype=torch.float32)
+            .reshape(out_shape)
+            .clone()
+            .to(device)
+        )
 
     inp = tokenizer(prompt, return_tensors="pt").to(device)
     input_ids = inp["input_ids"].clone()
+    eos_id = tokenizer.eos_token_id
     with torch.no_grad():
         for _ in range(num_tokens):
             hidden = embed_module(input_ids)
@@ -120,18 +130,24 @@ async def run_chain_inference(
             logits = lm_head_module(hidden[:, -1:, :])
             next_id = logits.argmax(dim=-1)
             input_ids = torch.cat([input_ids, next_id], dim=-1)
+            if eos_id is not None and next_id.item() == eos_id:
+                break
     return input_ids[0, inp["input_ids"].shape[1] :].tolist()
 
 
 async def main():
     args = parse_args()
     if args.num_middle_partitions != 2:
-        raise ValueError("Phase 6 keeps the same topology as Phase 5 and requires exactly 2 middle partitions.")
+        raise ValueError(
+            "Phase 6 keeps the same topology as Phase 5 and requires exactly 2 middle partitions."
+        )
 
     device = torch.device("mps" if torch.backends.mps.is_available() else "cpu")
     dtype = torch.float32
     tokenizer = AutoTokenizer.from_pretrained(args.model_name)
-    model: Any = AutoModelForCausalLM.from_pretrained(args.model_name, torch_dtype=dtype)
+    model: Any = AutoModelForCausalLM.from_pretrained(
+        args.model_name, torch_dtype=dtype
+    )
     model = model.to(device=device)
     model.eval()
 
@@ -141,7 +157,15 @@ async def main():
     final_norm = getattr(base, "norm", None)
     lm_head_module = getattr(model, "lm_head", None)
     rotary_emb = getattr(base, "rotary_emb", None)
-    if not all([embed_module is not None, layers_list is not None, final_norm is not None, lm_head_module is not None, rotary_emb is not None]):
+    if not all(
+        [
+            embed_module is not None,
+            layers_list is not None,
+            final_norm is not None,
+            lm_head_module is not None,
+            rotary_emb is not None,
+        ]
+    ):
         raise RuntimeError("Model does not expose expected modules.")
     assert layers_list is not None
     assert embed_module is not None
@@ -158,13 +182,18 @@ async def main():
     if middle_count <= 0 or middle_count % args.num_middle_partitions != 0:
         raise ValueError("Invalid middle partitioning.")
     chunk = middle_count // args.num_middle_partitions
-    ranges = [(middle_start + i * chunk, middle_start + (i + 1) * chunk) for i in range(args.num_middle_partitions)]
+    ranges = [
+        (middle_start + i * chunk, middle_start + (i + 1) * chunk)
+        for i in range(args.num_middle_partitions)
+    ]
 
     hidden_size = model.config.hidden_size
     batch_size = 1
     max_nbytes = batch_size * args.max_seq * hidden_size * 4
 
-    print(f"total blocks={num_blocks}, first_k={args.k}, middle_count={middle_count}, last_k={args.k}")
+    print(
+        f"total blocks={num_blocks}, first_k={args.k}, middle_count={middle_count}, last_k={args.k}"
+    )
     print(f"middle partition ranges={ranges}")
     print(f"device={device}, max_nbytes={max_nbytes}")
 
@@ -200,7 +229,9 @@ async def main():
         if hello_frame["kind"] != KIND_READY:
             raise RuntimeError(f"Expected READY, got {hello_frame}")
 
-        baseline = get_baseline(args.prompt, args.num_new_tokens, model, tokenizer, device)
+        baseline = get_baseline(
+            args.prompt, args.num_new_tokens, model, tokenizer, device
+        )
         split = await run_chain_inference(
             p2p=p2p,
             w1_info=w1_info,
