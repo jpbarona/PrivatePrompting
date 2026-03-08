@@ -103,28 +103,30 @@ async def main():
         hidden_states = (
             torch.frombuffer(tensor_bytes, dtype=torch.float32).reshape(shape).clone().to(device)
         )
-        seq_len = hidden_states.shape[1]
-        position_ids = torch.arange(seq_len, device=device, dtype=torch.long).unsqueeze(0)
-        position_embeddings = rotary_emb(hidden_states, position_ids)
-        causal_mask = torch.triu(
-            torch.full(
-                (seq_len, seq_len),
-                torch.finfo(hidden_states.dtype).min,
-                device=device,
-                dtype=hidden_states.dtype,
-            ),
-            diagonal=1,
-        ).unsqueeze(0).unsqueeze(0)
+        with torch.no_grad():
+            seq_len = hidden_states.shape[1]
+            position_ids = torch.arange(seq_len, device=device, dtype=torch.long).unsqueeze(0)
+            position_embeddings = rotary_emb(hidden_states, position_ids)
+            causal_mask = torch.triu(
+                torch.full(
+                    (seq_len, seq_len),
+                    torch.finfo(hidden_states.dtype).min,
+                    device=device,
+                    dtype=hidden_states.dtype,
+                ),
+                diagonal=1,
+            ).unsqueeze(0).unsqueeze(0)
 
-        for layer in layers_to_run:
-            hidden_states = layer(
-                hidden_states,
-                attention_mask=causal_mask,
-                position_embeddings=position_embeddings,
-                position_ids=position_ids,
-                use_cache=False,
-            )
+            for layer in layers_to_run:
+                hidden_states = layer(
+                    hidden_states,
+                    attention_mask=causal_mask,
+                    position_embeddings=position_embeddings,
+                    position_ids=position_ids,
+                    use_cache=False,
+                )
 
+        hidden_states = hidden_states.detach()
         out_nbytes = hidden_states.numel() * hidden_states.element_size()
         if out_nbytes > args.max_nbytes:
             raise ValueError(
@@ -156,6 +158,7 @@ async def main():
                     downstream_reply = await call_handler(
                         p2p=p2p,
                         peer_id=downstream.peer_id,
+                        peer_maddr=downstream.maddr,
                         handler_name=downstream.handler_name,
                         payload_bytes=hello_blob,
                     )
@@ -172,6 +175,7 @@ async def main():
                     await call_handler(
                         p2p=p2p,
                         peer_id=downstream.peer_id,
+                        peer_maddr=downstream.maddr,
                         handler_name=downstream.handler_name,
                         payload_bytes=encode_frame({"kind": KIND_SHUTDOWN}),
                     )
@@ -184,6 +188,7 @@ async def main():
                     await call_handler(
                         p2p=p2p,
                         peer_id=downstream.peer_id,
+                        peer_maddr=downstream.maddr,
                         handler_name=downstream.handler_name,
                         payload_bytes=encode_frame(frame),
                     )
@@ -199,6 +204,7 @@ async def main():
                 downstream_reply = await call_handler(
                     p2p=p2p,
                     peer_id=downstream.peer_id,
+                    peer_maddr=downstream.maddr,
                     handler_name=downstream.handler_name,
                     payload_bytes=encode_frame(local_frame, local_tensor),
                 )

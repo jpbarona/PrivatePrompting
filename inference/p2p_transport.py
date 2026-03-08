@@ -6,6 +6,7 @@ from typing import Optional, Tuple
 import hivemind
 from hivemind.p2p import P2P
 from hivemind.p2p.p2p_daemon_bindings.datastructures import PeerID
+from multiaddr import Multiaddr
 from hivemind.utils import get_dht_time
 
 DEFAULT_DHT_TTL = 3600.0
@@ -109,10 +110,13 @@ async def call_handler(
     *,
     p2p: P2P,
     peer_id: str,
+    peer_maddr: Optional[str],
     handler_name: str,
     payload_bytes: bytes,
 ) -> bytes:
     remote_peer_id = PeerID.from_base58(peer_id)
+    if peer_maddr:
+        await p2p._client.connect(remote_peer_id, [Multiaddr(peer_maddr)])
     _, reader, writer = await p2p.call_binary_stream_handler(remote_peer_id, handler_name)
     try:
         await P2P.send_raw_data(payload_bytes, writer)

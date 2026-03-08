@@ -128,6 +128,7 @@ async def run_failure_probe(args):
         reply = await call_handler(
             p2p=p2p,
             peer_id=w1.peer_id,
+            peer_maddr=w1.maddr,
             handler_name=w1.handler_name,
             payload_bytes=bad_frame,
         )
@@ -138,6 +139,7 @@ async def run_failure_probe(args):
         shutdown_reply = await call_handler(
             p2p=p2p,
             peer_id=w1.peer_id,
+            peer_maddr=w1.maddr,
             handler_name=w1.handler_name,
             payload_bytes=encode_frame({"kind": KIND_SHUTDOWN}),
         )
