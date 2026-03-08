@@ -44,8 +44,8 @@ help:
 	@echo ""
 	@echo "Run peers on host machine:"
 	@echo "  0) make bootstrap_peer [HOST_IP=<lan_ip>]   # start DHT bootstrap (do this first)"
-	@echo "  1) make w2 BOOTSTRAP_MADDR=<bootstrap_peer_dht_maddr> HOST_IP=<host_ip> [RUN_ID=<id>]"
-	@echo "  2) make w1 BOOTSTRAP_MADDR=<bootstrap_peer_dht_maddr> HOST_IP=<host_ip> [RUN_ID=<id>]"
+	@echo "  1) make w2 BOOTSTRAP_MADDR=<bootstrap_peer_dht_maddr> HOST_IP=<host_ip>"
+	@echo "  2) make w1 BOOTSTRAP_MADDR=<bootstrap_peer_dht_maddr> HOST_IP=<host_ip> [P2P_PORT_W1=<non-conflicting_port>]"
 	@echo "Run parent on remote machine:"
 	@echo "  3) make run BOOTSTRAP_MADDR=<bootstrap_peer_dht_maddr> HOST_IP=<client_ip> [RUN_ID=<id>]"
 	@echo ""
@@ -60,8 +60,8 @@ help:
 	@echo ""
 	@echo "Safety notes:"
 	@echo "  - If bootstrap_peer is running, avoid P2P_PORT_W1=44211 (conflicts with bootstrap peer P2P)."
-	@echo "  - Set RUN_ID to isolate DHT keys per run (e.g. RUN_ID=v3)."
-	@echo "  - Effective keys: DHT_KEY_W1=$(DHT_KEY_W1), DHT_KEY_W2=$(DHT_KEY_W2)"
+	@echo "  - Host workers always advertise fixed keys: $(DHT_KEY_BASE_W1), $(DHT_KEY_BASE_W2)"
+	@echo "  - RUN_ID only affects the parent/test lookup keys."
 
 setup:
 	@command -v $(SETUP_PYTHON) >/dev/null 2>&1 || { echo "Missing $(SETUP_PYTHON). Install Python 3 or set SYSTEM_PYTHON=/path/to/python."; exit 2; }
@@ -72,11 +72,10 @@ setup:
 	$(PIP) install -r requirements.txt
 
 quickstart:
-	@echo "Set once (same value in all terminals): RUN_ID=<id> (example: RUN_ID=v3)"
 	@echo "Host terminal A:"
-	@echo "  make host_w2 HOST_IP=<host_ip> BOOTSTRAP_MADDR=<bootstrap_peer_dht_maddr> RUN_ID=<id>"
+	@echo "  make host_w2 HOST_IP=<host_ip> BOOTSTRAP_MADDR=<bootstrap_peer_dht_maddr>"
 	@echo "Host terminal B:"
-	@echo "  make host_w1 HOST_IP=<host_ip> BOOTSTRAP_MADDR=<bootstrap_peer_dht_maddr> RUN_ID=<id> P2P_PORT_W1=<non-conflicting_port>"
+	@echo "  make host_w1 HOST_IP=<host_ip> BOOTSTRAP_MADDR=<bootstrap_peer_dht_maddr> P2P_PORT_W1=<non-conflicting_port>"
 	@echo "Remote terminal:"
 	@echo "  make remote_run HOST_IP=<client_ip> BOOTSTRAP_MADDR=<bootstrap_peer_dht_maddr> RUN_ID=<id>"
 
@@ -97,7 +96,7 @@ w2:
 		--dht-port $(DHT_PORT_W2) \
 		--p2p-port $(P2P_PORT_W2) \
 		--bootstrap-maddr "$(BOOTSTRAP_MADDR)" \
-		--dht-key "$(DHT_KEY_W2)" \
+		--dht-key "$(DHT_KEY_BASE_W2)" \
 		--handler-name "$(HANDLER_NAME)" \
 		--max-nbytes $(MAX_NBYTES) \
 		--layer-start $(W2_LAYER_START) \
@@ -111,8 +110,8 @@ w1:
 		--dht-port $(DHT_PORT_W1) \
 		--p2p-port $(P2P_PORT_W1) \
 		--bootstrap-maddr "$(BOOTSTRAP_MADDR)" \
-		--dht-key "$(DHT_KEY_W1)" \
-		--next-dht-key "$(DHT_KEY_W2)" \
+		--dht-key "$(DHT_KEY_BASE_W1)" \
+		--next-dht-key "$(DHT_KEY_BASE_W2)" \
 		--handler-name "$(HANDLER_NAME)" \
 		--max-nbytes $(MAX_NBYTES) \
 		--layer-start $(W1_LAYER_START) \

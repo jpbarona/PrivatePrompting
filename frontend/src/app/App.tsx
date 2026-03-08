@@ -20,7 +20,6 @@ export default function App() {
   const [isHosting, setIsHosting] = useState(false);
   const [peerNumber, setPeerNumber] = useState<number | null>(null);
   const [bootstrapMaddr, setBootstrapMaddr] = useState("");
-  const [runId, setRunId] = useState("");
   const [connectStatus, setConnectStatus] = useState<BackendStatus>("idle");
   const [connectError, setConnectError] = useState("");
   const [connectLogs, setConnectLogs] = useState<string[]>([]);
@@ -64,7 +63,6 @@ export default function App() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           bootstrapMaddr: bootstrapMaddr.trim(),
-          runId: runId.trim(),
         }),
       });
       if (!res.ok) {
@@ -169,17 +167,11 @@ export default function App() {
               <div className="flex-1 flex items-center justify-center px-6">
                 <div className="w-full max-w-2xl bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 p-6 space-y-4">
                   <h2 className="text-xl font-light tracking-wide">Launch Backend</h2>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 gap-3">
                     <input
                       value={bootstrapMaddr}
                       onChange={(e) => setBootstrapMaddr(e.target.value)}
                       placeholder="bootstrap_maddr (required)"
-                      className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none md:col-span-2"
-                    />
-                    <input
-                      value={runId}
-                      onChange={(e) => setRunId(e.target.value)}
-                      placeholder="run_id (optional)"
                       className="bg-white/5 border border-white/10 rounded-xl px-4 py-3 outline-none"
                     />
                   </div>
