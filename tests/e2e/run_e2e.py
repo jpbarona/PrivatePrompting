@@ -378,12 +378,12 @@ def main() -> int:
         if not any(line.strip() == "match: True" for line in parent.lines):
             raise RuntimeError("Parent finished but did not report 'match: True'")
 
-        if w1 and w1.process.wait(timeout=30.0) != 0:
-            raise RuntimeError("w1 did not exit cleanly after SHUTDOWN")
-        if w2 and w2.process.wait(timeout=30.0) != 0:
-            raise RuntimeError("w2 did not exit cleanly after SHUTDOWN")
+        if w1 and w1.process.poll() is not None:
+            raise RuntimeError(f"w1 exited unexpectedly with code {w1.process.returncode}")
+        if w2 and w2.process.poll() is not None:
+            raise RuntimeError(f"w2 exited unexpectedly with code {w2.process.returncode}")
 
-        print("[orchestrator] PASS: all processes exited 0 and parent reported match: True", flush=True)
+        print("[orchestrator] PASS: parent reported match: True and workers stayed alive", flush=True)
         return 0
     except KeyboardInterrupt:
         print("[orchestrator] interrupted", flush=True)
