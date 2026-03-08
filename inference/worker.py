@@ -289,7 +289,10 @@ async def main():
                 stop_event.set()
                 raise
         finally:
-            writer.close()
+            try:
+                await writer.drain()
+            finally:
+                writer.close()
 
     await p2p.add_binary_stream_handler(args.handler_name, handle)
     logger.info(

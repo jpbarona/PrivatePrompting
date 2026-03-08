@@ -120,6 +120,7 @@ async def call_handler(
     _, reader, writer = await p2p.call_binary_stream_handler(remote_peer_id, handler_name)
     try:
         await P2P.send_raw_data(payload_bytes, writer)
+        await writer.drain()
         return await P2P.receive_raw_data(reader)
     finally:
         writer.close()

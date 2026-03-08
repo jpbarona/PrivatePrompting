@@ -14,7 +14,7 @@ W2_LAYER_START ?= 12
 W2_LAYER_END ?= 22
 
 HOST_IP ?= 127.0.0.1
-BOOTSTRAP_MADDR ?= /ip4/127.0.0.1/tcp/43300/p2p/REPLACE_WITH_PEER0_DHT_PEER_ID
+BOOTSTRAP_MADDR ?= /ip4/127.0.0.1/tcp/43300/p2p/REPLACE_WITH_BOOTSTRAP_PEER_DHT_PEER_ID
 
 DHT_PORT_W1 ?= 43311
 DHT_PORT_W2 ?= 43312
@@ -34,10 +34,10 @@ HANDLER_NAME ?= inference_frame
 
 help:
 	@echo "Run peers on host machine:"
-	@echo "  1) make w2 BOOTSTRAP_MADDR=<peer0_dht_maddr> HOST_IP=<host_ip> [RUN_ID=<id>]"
-	@echo "  2) make w1 BOOTSTRAP_MADDR=<peer0_dht_maddr> HOST_IP=<host_ip> [RUN_ID=<id>]"
+	@echo "  1) make w2 BOOTSTRAP_MADDR=<bootstrap_peer_dht_maddr> HOST_IP=<host_ip> [RUN_ID=<id>]"
+	@echo "  2) make w1 BOOTSTRAP_MADDR=<bootstrap_peer_dht_maddr> HOST_IP=<host_ip> [RUN_ID=<id>]"
 	@echo "Run parent on remote machine:"
-	@echo "  3) make run BOOTSTRAP_MADDR=<peer0_dht_maddr> HOST_IP=<client_ip> [RUN_ID=<id>]"
+	@echo "  3) make run BOOTSTRAP_MADDR=<bootstrap_peer_dht_maddr> HOST_IP=<client_ip> [RUN_ID=<id>]"
 	@echo ""
 	@echo "Convenience aliases:"
 	@echo "  make host_w2      # same as w2"
@@ -47,18 +47,18 @@ help:
 	@echo "  make quickstart   # prints copy/paste flow"
 	@echo ""
 	@echo "Safety notes:"
-	@echo "  - If peer0.py is running, avoid P2P_PORT_W1=44211 (conflicts with peer0 P2P)."
+	@echo "  - If bootstrap_peer is running, avoid P2P_PORT_W1=44211 (conflicts with bootstrap peer P2P)."
 	@echo "  - Set RUN_ID to isolate DHT keys per run (e.g. RUN_ID=v3)."
 	@echo "  - Effective keys: DHT_KEY_W1=$(DHT_KEY_W1), DHT_KEY_W2=$(DHT_KEY_W2)"
 
 quickstart:
 	@echo "Set once (same value in all terminals): RUN_ID=<id> (example: RUN_ID=v3)"
 	@echo "Host terminal A:"
-	@echo "  make host_w2 HOST_IP=<host_ip> BOOTSTRAP_MADDR=<peer0_dht_maddr> RUN_ID=<id>"
+	@echo "  make host_w2 HOST_IP=<host_ip> BOOTSTRAP_MADDR=<bootstrap_peer_dht_maddr> RUN_ID=<id>"
 	@echo "Host terminal B:"
-	@echo "  make host_w1 HOST_IP=<host_ip> BOOTSTRAP_MADDR=<peer0_dht_maddr> RUN_ID=<id> P2P_PORT_W1=<non-conflicting_port>"
+	@echo "  make host_w1 HOST_IP=<host_ip> BOOTSTRAP_MADDR=<bootstrap_peer_dht_maddr> RUN_ID=<id> P2P_PORT_W1=<non-conflicting_port>"
 	@echo "Remote terminal:"
-	@echo "  make remote_run HOST_IP=<client_ip> BOOTSTRAP_MADDR=<peer0_dht_maddr> RUN_ID=<id>"
+	@echo "  make remote_run HOST_IP=<client_ip> BOOTSTRAP_MADDR=<bootstrap_peer_dht_maddr> RUN_ID=<id>"
 
 host_w2: w2
 

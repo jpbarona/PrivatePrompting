@@ -14,7 +14,7 @@ Distributed causal LM inference over two middle workers using raw Hivemind P2P t
 
 - Active Python environment with `torch` and `transformers` installed (e.g. `conda activate quantenv`)
 - Run all `make` commands from repo root (`Hackathon/`)
-- A bootstrap DHT multiaddr is required (for MVP this is peer0's DHT maddr from `singleMachinep2p/peer0.py`)
+- A bootstrap DHT multiaddr is required (for MVP this is the bootstrap peer's DHT maddr from `p2p/bootstrap_peer.py`)
 
 ## Run E2E (host peers + remote client)
 
@@ -27,9 +27,9 @@ make quickstart
 ```
 
 Then execute exactly what it prints:
-- Host terminal A: `make host_w2 HOST_IP=<host_ip> BOOTSTRAP_MADDR=<peer0_dht_maddr>`
-- Host terminal B: `make host_w1 HOST_IP=<host_ip> BOOTSTRAP_MADDR=<peer0_dht_maddr>`
-- Remote terminal: `make remote_run HOST_IP=<client_ip> BOOTSTRAP_MADDR=<peer0_dht_maddr>`
+- Host terminal A: `make host_w2 HOST_IP=<host_ip> BOOTSTRAP_MADDR=<bootstrap_peer_dht_maddr>`
+- Host terminal B: `make host_w1 HOST_IP=<host_ip> BOOTSTRAP_MADDR=<bootstrap_peer_dht_maddr>`
+- Remote terminal: `make remote_run HOST_IP=<client_ip> BOOTSTRAP_MADDR=<bootstrap_peer_dht_maddr>`
 
 ### 1) On host machine (runs W2 then W1)
 
@@ -37,7 +37,7 @@ First export the host machine LAN IP and bootstrap maddr:
 
 ```bash
 export HOST_IP=192.168.1.31
-export BOOTSTRAP_MADDR="/ip4/192.168.1.31/tcp/43300/p2p/<peer0_dht_peer_id>"
+export BOOTSTRAP_MADDR="/ip4/192.168.1.31/tcp/43300/p2p/<bootstrap_peer_dht_peer_id>"
 ```
 
 Then start workers:
@@ -61,7 +61,7 @@ Export client host IP and same bootstrap maddr:
 
 ```bash
 export HOST_IP=<remote_client_ip>
-export BOOTSTRAP_MADDR="/ip4/192.168.1.31/tcp/43300/p2p/<peer0_dht_peer_id>"
+export BOOTSTRAP_MADDR="/ip4/192.168.1.31/tcp/43300/p2p/<bootstrap_peer_dht_peer_id>"
 ```
 
 Run:

@@ -14,13 +14,13 @@ Or run directly in 3 terminals:
 
 ```bash
 # Host terminal A (worker 2)
-make host_w2 HOST_IP=<host_ip> BOOTSTRAP_MADDR=<peer0_dht_maddr>
+make host_w2 HOST_IP=<host_ip> BOOTSTRAP_MADDR=<bootstrap_peer_dht_maddr>
 
 # Host terminal B (worker 1)
-make host_w1 HOST_IP=<host_ip> BOOTSTRAP_MADDR=<peer0_dht_maddr>
+make host_w1 HOST_IP=<host_ip> BOOTSTRAP_MADDR=<bootstrap_peer_dht_maddr>
 
 # Remote terminal (parent/client)
-make remote_run HOST_IP=<client_ip> BOOTSTRAP_MADDR=<peer0_dht_maddr>
+make remote_run HOST_IP=<client_ip> BOOTSTRAP_MADDR=<bootstrap_peer_dht_maddr>
 ```
 
 ## Required parameters
@@ -31,7 +31,7 @@ make remote_run HOST_IP=<client_ip> BOOTSTRAP_MADDR=<peer0_dht_maddr>
 - `BOOTSTRAP_MADDR`
   - Full DHT bootstrap multiaddress in the format:
     - `/ip4/<host_ip>/tcp/<dht_port>/p2p/<peer_id>`
-  - For your setup, this is peer0's DHT maddr.
+  - For your setup, this is the bootstrap peer's DHT maddr.
 
 ## How to find `HOST_IP`
 
@@ -43,11 +43,11 @@ make remote_run HOST_IP=<client_ip> BOOTSTRAP_MADDR=<peer0_dht_maddr>
 
 Use one of these:
 
-1) From peer0 startup logs (preferred):
+1) From bootstrap peer startup logs (preferred):
 - Look for `DHT bootstrap maddr: /ip4/.../tcp/.../p2p/...`
 
-2) From peer0 HTTP bootstrap endpoint:
-- If peer0 is running with HTTP bootstrap enabled (`singleMachinep2p/peer0.py`), fetch:
+2) From bootstrap peer HTTP endpoint:
+- If the bootstrap peer is running (`p2p/bootstrap_peer.py`), fetch:
   - `http://<host_ip>:8765/`
 - Example:
   - `curl "http://192.168.1.31:8765/"`
