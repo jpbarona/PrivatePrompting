@@ -58,18 +58,9 @@ export default function App() {
     setConnectLogs([]);
 
     if (IS_PROD) {
-      try {
-        const health = await fetch(`${API_BASE_URL}/health`);
-        if (!health.ok) {
-          throw new Error(`Backend health check failed with ${health.status}`);
-        }
-        setInferUrl(`${API_BASE_URL}/infer`);
-        setConnectStatus("ready");
-        setIsConnected(true);
-      } catch (error) {
-        setConnectStatus("error");
-        setConnectError(error instanceof Error ? error.message : String(error));
-      }
+      setInferUrl(`${API_BASE_URL}/infer`);
+      setConnectStatus("ready");
+      setIsConnected(true);
       return;
     }
 
