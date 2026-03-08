@@ -26,8 +26,9 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from p2p_transport import create_p2p_node, discover_worker, join_dht
+from p2p_transport import call_handler, create_p2p_node, discover_worker, join_dht
 from parent_client import run_chain_inference
+from protocol import KIND_HELLO, KIND_READY, decode_frame, encode_frame
 
 
 # ── CLI args ──────────────────────────────────────────────────────────────────
@@ -43,6 +44,11 @@ def parse_args():
     p.add_argument("--bootstrap-maddr", required=True)
     p.add_argument("--w1-dht-key", default="inference_w1")
     p.add_argument("--w2-dht-key", default="inference_w2")
+    p.add_argument(
+        "--run-id",
+        default="",
+        help="Optional suffix appended to DHT keys (matches e2e --run-id)",
+    )
     p.add_argument("--max-seq", type=int, default=2048)
     p.add_argument("--api-port", type=int, default=8000)
     p.add_argument("--api-host", default="0.0.0.0")
@@ -101,9 +107,12 @@ async def lifespan(_app: FastAPI):
     print("[api] Creating P2P node …")
     p2p = await create_p2p_node(p2p_port=0)
 
+    def _dht_key(base: str) -> str:
+        return f"{base}_{args.run_id}" if args.run_id else base
+
     print("[api] Discovering workers …")
-    w1_info = discover_worker(dht, key=args.w1_dht_key)
-    w2_info = discover_worker(dht, key=args.w2_dht_key)
+    w1_info = discover_worker(dht, key=_dht_key(args.w1_dht_key))
+    w2_info = discover_worker(dht, key=_dht_key(args.w2_dht_key))
     print(f"[api] w1: {w1_info.maddr}  w2: {w2_info.maddr}")
 
     if w1_info.layer_start != ranges[0][0] or w1_info.layer_end != ranges[0][1]:
@@ -129,10 +138,23 @@ async def lifespan(_app: FastAPI):
         max_nbytes=max_nbytes,
         dht=dht,
     )
+    # ── HELLO handshake: warm up w1→w2 connection (matches parent_client flow) ──
+    print("[api] Sending HELLO handshake …")
+    hello_response = await call_handler(
+        p2p=p2p,
+        peer_id=w1_info.peer_id,
+        peer_maddr=w1_info.maddr,
+        handler_name=w1_info.handler_name,
+        payload_bytes=encode_frame({"kind": KIND_HELLO, "role": "parent"}),
+    )
+    hello_frame, _ = decode_frame(hello_response, max_nbytes)
+    if hello_frame["kind"] != KIND_READY:
+        raise RuntimeError(f"Expected READY from w1, got {hello_frame}")
     print("[api] Ready.")
 
     yield  # ── server is running ──
 
+    # Workers are persistent (non-dying) — do NOT send KIND_SHUTDOWN
     await p2p.shutdown()
     dht.shutdown()
 
