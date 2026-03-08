@@ -192,6 +192,16 @@ class InferResponse(BaseModel):
     response: str
 
 
+@app.get("/")
+def read_root():
+    return {"message": "PrivatePrompting API", "status": "ready"}
+
+
+@app.get("/health")
+def health_check():
+    return {"status": "healthy"}
+
+
 @app.post("/infer", response_model=InferResponse)
 async def infer(req: InferRequest):
     if not req.prompt.strip():
