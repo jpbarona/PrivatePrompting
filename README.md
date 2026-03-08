@@ -1,3 +1,15 @@
+## License
+
+Licensed under the GNU General Public License, version 3 or (at your option)
+any later version, or
+<https://www.gnu.org/licenses/gpl-3.0.html>)
+
+## Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in the work by you, as defined in the license above, shall be
+licensed as above, without any additional terms or conditions.
+
 # Hackathon
 
 Root commands for P2P inference live in `Makefile`.
