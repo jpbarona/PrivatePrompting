@@ -13,6 +13,9 @@ type BackendStatusResponse = {
   logs: string[];
 };
 
+const IS_PROD = import.meta.env.PROD;
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || (IS_PROD ? "/api" : "http://localhost:8000");
+
 export default function App() {
   const [activeTab, setActiveTab] = useState("connect");
   const [showHostProgress, setShowHostProgress] = useState(false);
@@ -24,7 +27,7 @@ export default function App() {
   const [connectStatus, setConnectStatus] = useState<BackendStatus>("idle");
   const [connectError, setConnectError] = useState("");
   const [connectLogs, setConnectLogs] = useState<string[]>([]);
-  const [inferUrl, setInferUrl] = useState("http://localhost:8000/infer");
+  const [inferUrl, setInferUrl] = useState(`${API_BASE_URL}/infer`);
 
   const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -53,6 +56,23 @@ export default function App() {
   const handleConnectClick = async () => {
     setConnectError("");
     setConnectLogs([]);
+
+    if (IS_PROD) {
+      try {
+        const health = await fetch(`${API_BASE_URL}/health`);
+        if (!health.ok) {
+          throw new Error(`Backend health check failed with ${health.status}`);
+        }
+        setInferUrl(`${API_BASE_URL}/infer`);
+        setConnectStatus("ready");
+        setIsConnected(true);
+      } catch (error) {
+        setConnectStatus("error");
+        setConnectError(error instanceof Error ? error.message : String(error));
+      }
+      return;
+    }
+
     if (!bootstrapMaddr.trim()) {
       setConnectError("bootstrap_maddr is required");
       return;
