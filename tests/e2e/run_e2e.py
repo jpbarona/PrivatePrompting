@@ -14,6 +14,10 @@ from typing import Optional
 
 BOOTSTRAP_RE = re.compile(r"DHT bootstrap maddr:\s*(\S+)")
 
+E2E_BOOTSTRAP_DHT = 43400
+E2E_BOOTSTRAP_HTTP = 18765
+E2E_BOOTSTRAP_P2P = 44231
+
 
 @dataclass
 class ProcHandle:
@@ -253,17 +257,18 @@ def main() -> int:
     dht_key_w1 = build_dht_key("inference_w1", run_id)
     dht_key_w2 = build_dht_key("inference_w2", run_id)
     e2e_ports = [
-        43300,
+        E2E_BOOTSTRAP_DHT,
+        E2E_BOOTSTRAP_HTTP,
+        E2E_BOOTSTRAP_P2P,
         args.dht_port_w1,
         args.dht_port_w2,
         args.dht_port_parent,
-        44211,
         args.p2p_port_w1,
         args.p2p_port_w2,
     ]
     print(f"[orchestrator] run_id={run_id}", flush=True)
 
-    peer0: Optional[ProcHandle] = None
+    bootstrap_peer: Optional[ProcHandle] = None
     w2: Optional[ProcHandle] = None
     w1: Optional[ProcHandle] = None
     parent: Optional[ProcHandle] = None
@@ -272,17 +277,23 @@ def main() -> int:
         cleanup_stale_p2pd(e2e_ports)
         assert_ports_clear(e2e_ports)
 
-        peer0_cmd = [
+        bootstrap_peer_cmd = [
             args.python,
-            "singleMachinep2p/peer0.py",
+            "p2p/bootstrap_peer.py",
             "--host-ip",
             args.host_ip,
+            "--dht-port",
+            str(E2E_BOOTSTRAP_DHT),
+            "--http-port",
+            str(E2E_BOOTSTRAP_HTTP),
+            "--p2p-port",
+            str(E2E_BOOTSTRAP_P2P),
         ]
-        peer0 = start_process("peer0", peer0_cmd, cwd=str(repo_root), env=env)
-        bootstrap_match = wait_for_pattern(peer0, BOOTSTRAP_RE, timeout_s=args.startup_timeout_s)
+        bootstrap_peer = start_process("bootstrap_peer", bootstrap_peer_cmd, cwd=str(repo_root), env=env)
+        bootstrap_match = wait_for_pattern(bootstrap_peer, BOOTSTRAP_RE, timeout_s=args.startup_timeout_s)
         bootstrap_maddr = bootstrap_match.group(1)
         print(f"[orchestrator] bootstrap_maddr={bootstrap_maddr}", flush=True)
-        wait_for_line_contains(peer0, "[peer0 ready", timeout_s=args.startup_timeout_s)
+        wait_for_line_contains(bootstrap_peer, "[bootstrap_peer ready", timeout_s=args.startup_timeout_s)
 
         w2_cmd = [
             args.python,
@@ -395,7 +406,7 @@ def main() -> int:
         stop_process(parent)
         stop_process(w1)
         stop_process(w2)
-        stop_process(peer0)
+        stop_process(bootstrap_peer)
         cleanup_stale_p2pd(e2e_ports)
 
 

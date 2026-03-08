@@ -8,14 +8,14 @@ Date: 2026-03-08
 - Python env: `quantenv`
 - Model: `Qwen/Qwen2.5-0.5B-Instruct`
 - Topology:
-  - `peer0` as DHT bootstrap
+  - `bootstrap_peer` as DHT bootstrap
   - `w2` middle partition `[12,22)`
   - `w1` middle partition `[2,12)`
   - `parent_client` runs first/last `k=2` layers
 
 ## Bootstrap Values Used
 
-- DHT bootstrap maddr from `peer0` log:
+- DHT bootstrap maddr from bootstrap peer log:
   - `/ip4/192.168.1.31/tcp/43300/p2p/12D3KooWSp92987oeFmMYFBQczt1x6ARcb1qd6W22Gwt1TNK9KED`
 
 ## Commands Used
@@ -24,7 +24,7 @@ Terminal 1 (keep running):
 
 ```bash
 conda activate quantenv
-python singleMachinep2p/peer0.py --host-ip 192.168.1.31
+python p2p/bootstrap_peer.py --host-ip 192.168.1.31
 ```
 
 Terminal 2:
@@ -50,9 +50,9 @@ make remote_run HOST_IP=192.168.1.31 BOOTSTRAP_MADDR="/ip4/192.168.1.31/tcp/4330
 
 ## Why This Run Worked
 
-- Used bootstrap DHT maddr (`tcp/43300`), not peer0 P2P maddr (`tcp/44211`).
+- Used bootstrap DHT maddr (`tcp/43300`), not bootstrap peer P2P maddr (`tcp/44211`).
 - Avoided stale key collisions by using fresh DHT keys (`inference_w1_v2`, `inference_w2_v2`).
-- Avoided `peer0`/`w1` P2P port conflict by setting `P2P_PORT_W1=44221`.
+- Avoided bootstrap peer/`w1` P2P port conflict by setting `P2P_PORT_W1=44221`.
 - Parent and workers were updated to dial peers via discovered maddr before opening handler streams.
 - Worker forward path now serializes detached/no-grad tensors.
 
