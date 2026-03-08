@@ -7,7 +7,6 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from protocol import (
     KIND_ERROR,
-    KIND_SHUTDOWN,
     KIND_TENSOR,
     KIND_HELLO,
     KIND_READY,
@@ -189,8 +188,6 @@ async def main():
     print(f"discovered w1: {w1_info.maddr}")
     print(f"discovered w2: {w2_info.maddr}")
 
-    handshake_ok = False
-    primary_exc = None
     try:
         hello_response = await call_handler(
             p2p=p2p,
@@ -202,7 +199,6 @@ async def main():
         hello_frame, _ = decode_frame(hello_response, max_nbytes)
         if hello_frame["kind"] != KIND_READY:
             raise RuntimeError(f"Expected READY, got {hello_frame}")
-        handshake_ok = True
 
         baseline = get_baseline(args.prompt, args.num_new_tokens, model, tokenizer, device)
         split = await run_chain_inference(
@@ -226,26 +222,7 @@ async def main():
         print("match:", baseline == split)
         print("baseline decoded:", tokenizer.decode(baseline, skip_special_tokens=True))
         print("split decoded:   ", tokenizer.decode(split, skip_special_tokens=True))
-    except BaseException as exc:
-        primary_exc = exc
-        raise
     finally:
-        if handshake_ok:
-            try:
-                shutdown_response = await call_handler(
-                    p2p=p2p,
-                    peer_id=w1_info.peer_id,
-                    peer_maddr=w1_info.maddr,
-                    handler_name=w1_info.handler_name,
-                    payload_bytes=encode_frame({"kind": KIND_SHUTDOWN}),
-                )
-                shutdown_frame, _ = decode_frame(shutdown_response, max_nbytes)
-                if shutdown_frame["kind"] != KIND_SHUTDOWN:
-                    raise RuntimeError(f"Unexpected final frame: {shutdown_frame}")
-            except Exception as shutdown_exc:
-                if primary_exc is None:
-                    raise
-                print(f"shutdown warning: {type(shutdown_exc).__name__}: {shutdown_exc}")
         await p2p.shutdown()
         dht.shutdown()
 
