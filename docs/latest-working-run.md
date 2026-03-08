@@ -63,3 +63,4 @@ The run is considered successful when parent prints:
 - `match: True`
 - Baseline token IDs equal split token IDs
 - Baseline decoded text equals split decoded text
+- Workers remain running after `remote_run` and are stopped manually by each volunteer.
