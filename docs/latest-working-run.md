@@ -16,7 +16,7 @@ Date: 2026-03-08
 ## Bootstrap Values Used
 
 - DHT bootstrap maddr from `peer0` log:
-  - `/ip4/192.168.1.31/tcp/43300/p2p/12D3KooWSveNUiRW299iTCMoJy98eRT1VsUxscGgrtH4poPPSYGT`
+  - `/ip4/192.168.1.31/tcp/43300/p2p/12D3KooWSp92987oeFmMYFBQczt1x6ARcb1qd6W22Gwt1TNK9KED`
 
 ## Commands Used
 
@@ -31,21 +31,21 @@ Terminal 2:
 
 ```bash
 conda activate quantenv
-make host_w2 HOST_IP=192.168.1.31 BOOTSTRAP_MADDR="/ip4/192.168.1.31/tcp/43300/p2p/12D3KooWSveNUiRW299iTCMoJy98eRT1VsUxscGgrtH4poPPSYGT" DHT_KEY_W2=inference_w2_v2
+make host_w2 HOST_IP=192.168.1.31 BOOTSTRAP_MADDR="/ip4/192.168.1.31/tcp/43300/p2p/12D3KooWSp92987oeFmMYFBQczt1x6ARcb1qd6W22Gwt1TNK9KED" DHT_KEY_W2=inference_w2_v2
 ```
 
 Terminal 3:
 
 ```bash
 conda activate quantenv
-make host_w1 HOST_IP=192.168.1.31 BOOTSTRAP_MADDR="/ip4/192.168.1.31/tcp/43300/p2p/12D3KooWSveNUiRW299iTCMoJy98eRT1VsUxscGgrtH4poPPSYGT" DHT_KEY_W1=inference_w1_v2 DHT_KEY_W2=inference_w2_v2 P2P_PORT_W1=44221
+make host_w1 HOST_IP=192.168.1.31 BOOTSTRAP_MADDR="/ip4/192.168.1.31/tcp/43300/p2p/12D3KooWSp92987oeFmMYFBQczt1x6ARcb1qd6W22Gwt1TNK9KED" DHT_KEY_W1=inference_w1_v2 DHT_KEY_W2=inference_w2_v2 P2P_PORT_W1=44221
 ```
 
 Terminal 4:
 
 ```bash
 conda activate quantenv
-make remote_run HOST_IP=192.168.1.31 BOOTSTRAP_MADDR="/ip4/192.168.1.31/tcp/43300/p2p/12D3KooWSveNUiRW299iTCMoJy98eRT1VsUxscGgrtH4poPPSYGT" DHT_KEY_W1=inference_w1_v2 DHT_KEY_W2=inference_w2_v2 PROMPT="What is the capital of France?"
+make remote_run HOST_IP=192.168.1.31 BOOTSTRAP_MADDR="/ip4/192.168.1.31/tcp/43300/p2p/12D3KooWSp92987oeFmMYFBQczt1x6ARcb1qd6W22Gwt1TNK9KED" DHT_KEY_W1=inference_w1_v2 DHT_KEY_W2=inference_w2_v2 PROMPT="What is the capital of France?"
 ```
 
 ## Why This Run Worked
