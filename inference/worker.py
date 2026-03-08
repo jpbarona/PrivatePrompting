@@ -1,5 +1,8 @@
 import argparse
 import asyncio
+import logging
+import time
+import uuid
 
 from hivemind.p2p import P2P
 
@@ -44,6 +47,11 @@ def parse_args():
 
 async def main():
     args = parse_args()
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(message)s",
+    )
+    logger = logging.getLogger(f"worker.{args.role}")
     if args.layer_end <= args.layer_start:
         raise ValueError(f"Invalid layer range: [{args.layer_start}, {args.layer_end})")
     if args.role == "w1" and not args.next_dht_key:
@@ -98,11 +106,12 @@ async def main():
 
     stop_event = asyncio.Event()
 
-    async def run_local_layers(frame, tensor_bytes):
+    async def run_local_layers(frame, tensor_bytes, request_id):
         shape = tuple(frame["shape"])
         hidden_states = (
             torch.frombuffer(tensor_bytes, dtype=torch.float32).reshape(shape).clone().to(device)
         )
+        local_start = time.perf_counter()
         with torch.no_grad():
             seq_len = hidden_states.shape[1]
             position_ids = torch.arange(seq_len, device=device, dtype=torch.long).unsqueeze(0)
@@ -132,27 +141,44 @@ async def main():
             raise ValueError(
                 f"Output out_nbytes={out_nbytes} larger than max_nbytes={args.max_nbytes}"
             )
+        local_ms = (time.perf_counter() - local_start) * 1000.0
+        logger.info(
+            "[%s] req=%s local_done layers=[%s,%s) latency_ms=%.1f out_shape=%s out_nbytes=%s",
+            args.role,
+            request_id,
+            args.layer_start,
+            args.layer_end,
+            local_ms,
+            tuple(hidden_states.shape),
+            out_nbytes,
+        )
         return {
             "kind": KIND_TENSOR,
             "shape": tuple(hidden_states.shape),
             "nbytes": out_nbytes,
+            "request_id": request_id,
         }, hidden_states.cpu().numpy().tobytes()
 
     async def handle(stream_info, reader, writer):
         nonlocal downstream_ready
         try:
+            request_start = time.perf_counter()
             inbound = await P2P.receive_raw_data(reader)
             frame, tensor_bytes = decode_frame(inbound, args.max_nbytes)
             kind = frame["kind"]
+            request_id = str(frame.get("request_id") or uuid.uuid4().hex[:8])
+            logger.info("[%s] req=%s in kind=%s", args.role, request_id, kind)
 
             if kind == KIND_HELLO:
                 if downstream and not downstream_ready:
+                    logger.info("[%s] req=%s downstream_hello->%s", args.role, request_id, downstream.peer_id)
                     hello_blob = encode_frame(
                         {
                             "kind": KIND_HELLO,
                             "role": args.role,
                             "layer_start": args.layer_start,
                             "layer_end": args.layer_end,
+                            "request_id": request_id,
                         }
                     )
                     downstream_reply = await call_handler(
@@ -166,25 +192,35 @@ async def main():
                     if downstream_frame["kind"] != KIND_READY:
                         raise RuntimeError(f"Expected READY from downstream, got {downstream_frame}")
                     downstream_ready = True
-                response_blob = encode_frame({"kind": KIND_READY, "role": args.role})
+                response_blob = encode_frame({"kind": KIND_READY, "role": args.role, "request_id": request_id})
                 await P2P.send_raw_data(response_blob, writer)
+                logger.info("[%s] req=%s reply kind=%s", args.role, request_id, KIND_READY)
                 return
 
             if kind == KIND_SHUTDOWN:
                 if downstream:
+                    logger.info("[%s] req=%s fwd_shutdown->%s", args.role, request_id, downstream.peer_id)
                     await call_handler(
                         p2p=p2p,
                         peer_id=downstream.peer_id,
                         peer_maddr=downstream.maddr,
                         handler_name=downstream.handler_name,
-                        payload_bytes=encode_frame({"kind": KIND_SHUTDOWN}),
+                        payload_bytes=encode_frame({"kind": KIND_SHUTDOWN, "request_id": request_id}),
                     )
-                await P2P.send_raw_data(encode_frame({"kind": KIND_SHUTDOWN}), writer)
+                await P2P.send_raw_data(encode_frame({"kind": KIND_SHUTDOWN, "request_id": request_id}), writer)
+                logger.info(
+                    "[%s] req=%s reply kind=%s total_ms=%.1f",
+                    args.role,
+                    request_id,
+                    KIND_SHUTDOWN,
+                    (time.perf_counter() - request_start) * 1000.0,
+                )
                 stop_event.set()
                 return
 
             if kind == KIND_ERROR:
                 if downstream:
+                    logger.info("[%s] req=%s fwd_error->%s", args.role, request_id, downstream.peer_id)
                     await call_handler(
                         p2p=p2p,
                         peer_id=downstream.peer_id,
@@ -193,14 +229,31 @@ async def main():
                         payload_bytes=encode_frame(frame),
                     )
                 await P2P.send_raw_data(encode_frame(frame), writer)
+                logger.info(
+                    "[%s] req=%s reply kind=%s total_ms=%.1f",
+                    args.role,
+                    request_id,
+                    KIND_ERROR,
+                    (time.perf_counter() - request_start) * 1000.0,
+                )
                 stop_event.set()
                 return
 
             if kind != KIND_TENSOR:
                 raise RuntimeError(f"Unexpected frame kind: {frame}")
 
-            local_frame, local_tensor = await run_local_layers(frame, tensor_bytes)
+            shape = tuple(frame["shape"])
+            logger.info(
+                "[%s] req=%s tensor shape=%s nbytes=%s",
+                args.role,
+                request_id,
+                shape,
+                frame["nbytes"],
+            )
+            local_frame, local_tensor = await run_local_layers(frame, tensor_bytes, request_id)
             if downstream:
+                fwd_start = time.perf_counter()
+                logger.info("[%s] req=%s fwd->%s", args.role, request_id, downstream.peer_id)
                 downstream_reply = await call_handler(
                     p2p=p2p,
                     peer_id=downstream.peer_id,
@@ -209,10 +262,26 @@ async def main():
                     payload_bytes=encode_frame(local_frame, local_tensor),
                 )
                 await P2P.send_raw_data(downstream_reply, writer)
+                logger.info(
+                    "[%s] req=%s fwd_done latency_ms=%.1f total_ms=%.1f",
+                    args.role,
+                    request_id,
+                    (time.perf_counter() - fwd_start) * 1000.0,
+                    (time.perf_counter() - request_start) * 1000.0,
+                )
                 return
 
             await P2P.send_raw_data(encode_frame(local_frame, local_tensor), writer)
+            logger.info(
+                "[%s] req=%s reply kind=%s total_ms=%.1f",
+                args.role,
+                request_id,
+                KIND_TENSOR,
+                (time.perf_counter() - request_start) * 1000.0,
+            )
         except Exception as exc:
+            err_request_id = locals().get("request_id", "unknown")
+            logger.exception("[%s] req=%s error %s: %s", args.role, err_request_id, type(exc).__name__, exc)
             error_blob = encode_frame({"kind": KIND_ERROR, "message": f"{type(exc).__name__}: {exc}"})
             try:
                 await P2P.send_raw_data(error_blob, writer)
@@ -223,9 +292,15 @@ async def main():
             writer.close()
 
     await p2p.add_binary_stream_handler(args.handler_name, handle)
-    print(
-        f"[{args.role}] DHT={dht_maddr} P2P={info.maddr} key={args.dht_key} "
-        f"layers=[{args.layer_start},{args.layer_end}) handler={args.handler_name}"
+    logger.info(
+        "[%s] DHT=%s P2P=%s key=%s layers=[%s,%s) handler=%s",
+        args.role,
+        dht_maddr,
+        info.maddr,
+        args.dht_key,
+        args.layer_start,
+        args.layer_end,
+        args.handler_name,
     )
 
     async def refresh_loop():
